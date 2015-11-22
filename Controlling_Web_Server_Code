@@ -1,0 +1,172 @@
+// Controlling_Web_Server_ASBS
+//The Code I adapted / modified for Question 3 of the Quiz in Ardunio Step by Step: Controlling Web Server
+//Video can be found on YouTube: 
+/*
+ * A simple web server with a GET request parser.
+ *
+*/
+
+#include <SPI.h>
+#include <Ethernet.h>
+
+byte           mac[]        = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x00 };
+byte           ip[]         = { 192,168,1,143 };
+String         message      = "";     //Will hold the confirmation message that will be shown to the user
+EthernetServer server(80);
+String         get_request  = "";     //Holds the GET request
+boolean        reading      = false;  //TRUE while the GET request is being received
+
+void setup()
+{
+  Serial.begin(9600);
+  Ethernet.begin(mac, ip);
+  server.begin();
+  Serial.println("ready");
+}
+
+void loop() {
+  // listen for incoming clients
+  EthernetClient   client = server.available();
+  String return_message; 
+  if (client) {
+    Serial.println("new client");
+    boolean sentContent    = false;
+    get_request           = "";
+    
+    while (client.connected()) {
+      if (client.available()) {
+        char       c = client.read();
+        //A raw GET request looks like this:
+        //GET /path/to/file/index.html?a=1 HTTP/1.0
+        //Notice the space between the "1" in "a=1" and the "H" in "HTTP"?
+        //Once we detect this space, we know that we have completed reading the 
+        //querry string, and the rest of the request is not important,
+        //therefore we can stop reading.
+        //This happens in the following block
+        if(reading && c == ' ') 
+        { reading = false;  
+          return_message = parseGetRequest(get_request);
+          break;
+        }
+        
+        if(c == '?'){
+          reading = true; //found the ?, begin reading the info
+        }
+
+        if(reading){ 
+            get_request += c;
+         }
+      }
+    }
+    
+    if (!sentContent){
+       construct_page(client, return_message);         
+       sentContent = true;        
+     }
+    // give the web browser time to receive the data
+    delay(5);
+    // close the connection:
+    client.stop();
+    Serial.println("client disonnected");
+  }
+}
+void construct_page(EthernetClient &client, String &rmessage)
+{
+    print_header(client);
+    print_form1(client);
+    print_form2(client);
+    print_photoresistor(client);
+    print_form3(client);
+    print_LEDonoroff(client);
+    end_page(client);
+}
+void print_header(EthernetClient &client)
+{
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println();
+    client.print("<html><head><title>");   
+    client.print("GET request example");
+    client.println("</title><body>");
+}
+void print_form2(EthernetClient &client)
+{
+    client.print("<h2>Values reported by Photo Resistor 1 and Photo Resistor 2:</h2>");       
+}
+void print_photoresistor(EthernetClient &client)
+{
+            delay (300); //time for photo resistor to settle  
+            int photoresistor1 = analogRead(A0);
+              //client.print("<br />");
+              client.print("<h3>Value of Photo Resistor 1:   ");
+              client.print(photoresistor1);
+              client.println("<br />");
+            delay (300); // time for photo resistor to settle            
+            int photoresistor2 = analogRead(A1);
+              client.print("Value of Photo Resistor 2:   ");
+              client.print(photoresistor2);
+              client.print("<br />");
+              client.print("<br />");    
+          }
+
+void print_form3(EthernetClient &client)
+{
+client.print("<h2>Actual State of White LED 1 and White LED 2:</h2>");
+}
+void print_LEDonoroff(EthernetClient &client)
+{
+delay(300);
+int photoresistor1 = analogRead(A0);
+int photoresistor2 = analogRead(A1);
+
+      if (photoresistor1 > 600){
+              client.print("<h3>White LED 1 is ON");
+              }
+        else{              
+              client.print("<h3>White LED 1 is OFF<h3>");
+             }
+  if (photoresistor2 > 600){              
+              client.print("<h3>White LED 2 is ON<h3>");
+             }
+        else{             
+             client.print("<h3>White LED 2 is OFF<h3>");
+            }
+}
+void print_form1(EthernetClient &client)
+{
+  client.println("<h2>Use Buttons to turn White LED 1 or White LED 2 ON or OFF</h2>");
+  client.print("<form action='/' method='GET'><p><input type='hidden' name='led8'");
+  client.print(" value='1'><input type='submit' value='White LED 1 ON'/></form>");
+  client.print("<form action='/' method='GET'><p><input type='hidden' name='led8'");
+  client.print(" value='0'><input type='submit' value='White LED 1 OFF'/></form>");
+  client.print("<form action='/' method='GET'><p><input type='hidden' name='led7'");
+  client.print(" value='1'><input type='submit' value='White LED 2 ON'/></form>");
+  client.print("<form action='/' method='GET'><p><input type='hidden' name='led7'");
+  client.print(" value='0'><input type='submit' value='White LED 2 OFF'/></form>");
+  client.print("<br />");
+}
+void end_page(EthernetClient &client)
+{     
+    client.print("</body>");
+    client.print("</html>");
+}
+String parseGetRequest(String &str) {
+  Serial.print(" Parsing this string:");
+  Serial.println(str);
+  int   led_index  = str.indexOf("led");
+  int   led_pin    = str[led_index + 3] - '0';
+  int   led_val    = str[led_index + 5]  - '0';
+  String return_message = "";
+  return_message = "Setting LED ";
+  return_message += led_pin;
+  return_message += " to ";
+  return_message += led_val;
+  executeInstruction(led_pin, led_val);
+  return return_message;
+}
+
+void executeInstruction(int pin, int val)
+{  
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, val);
+}
